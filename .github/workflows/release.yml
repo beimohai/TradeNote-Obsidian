@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags: ['*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm test
+      - run: pnpm build
+      - name: Validate version
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node -e "const m=require('./manifest.json'),p=require('./package.json'),v=require('./versions.json');if(process.env.RELEASE_TAG!==m.version||p.version!==m.version||v[m.version]!==m.minAppVersion)throw Error('Release version mismatch')"
+      - name: Publish installation files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" main.js manifest.json styles.css --clobber
+          else
+            gh release create "$RELEASE_TAG" main.js manifest.json styles.css --title "$RELEASE_TAG" --generate-notes
+          fi

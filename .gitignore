@@ -1,0 +1,17 @@
+node_modules/
+.pnpm-store/
+main.js
+data.json
+data/
+*.log
+.DS_Store
+
+__pycache__/
+*.py[cod]
+
+dist/
+release-assets/
+.env
+.env.*
+*.pem
+*.key
