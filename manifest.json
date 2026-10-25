@@ -1,7 +1,7 @@
 {
   "id": "tradenote",
   "name": "TradeNote",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.5.0",
   "description": "本地优先的 Markdown 交易复盘、日历与可选 AI 日报周报分析。",
   "author": "beimohai",
