@@ -88,8 +88,8 @@
 .tradenote-index-meter span { background: var(--background-modifier-border); border-radius: 1px; flex: 1; height: 3px; }
 .tradenote-row-actions { align-items: center; display: flex; gap: 2px; }
 .tradenote-row-actions button { background: transparent; box-shadow: none; display: grid; height: 22px; padding: 0; place-items: center; width: 22px; }
-.tradenote-row-actions .tradenote-delete-icon { background: #d9363e !important; border-color: #d9363e !important; box-shadow: none !important; color: #fff !important; }
-.tradenote-row-actions .tradenote-delete-icon:hover:not(:disabled) { background: #be2f36 !important; border-color: #be2f36 !important; color: #fff !important; }
+.tradenote-dashboard .tradenote-row-actions button.tradenote-delete-icon { background: #d9363e; border-color: #d9363e; box-shadow: none; color: #fff; }
+.tradenote-dashboard .tradenote-row-actions button.tradenote-delete-icon:hover:not(:disabled) { background: #be2f36; border-color: #be2f36; color: #fff; }
 .tradenote-row-actions svg { height: 14px; width: 14px; }
 .tradenote-empty { color: var(--text-muted); padding: 34px 0; text-align: center; }
 .tradenote-load-more { background: transparent; border: 1px solid var(--background-modifier-border); border-radius: 3px; box-shadow: none; color: var(--text-muted); display: block; font-size: var(--font-ui-smaller); margin: 14px auto 0; padding: 6px 10px; }
@@ -99,3 +99,5 @@
 .tradenote-analysis-input, .tradenote-analysis-output { box-sizing: border-box; width: 100%; resize: vertical; white-space: pre-wrap; line-height: 1.6; }
 .tradenote-analysis-input { min-height: 180px; }
 .tradenote-analysis-output { min-height: 340px; margin-top: 12px; }
+
+.tradenote-calendar-source { display: block; }

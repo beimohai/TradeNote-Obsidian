@@ -4,6 +4,7 @@
 
 ```powershell
 pnpm check
+pnpm lint
 pnpm test
 pnpm build
 ```

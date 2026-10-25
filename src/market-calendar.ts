@@ -44,7 +44,7 @@ export function parseAnnualClosures(year: string, text: string): string[] | null
   const dates = new Set<string>();
   for (let index = 0; index < labels.length; index++) {
     const label = labels[index];
-    const segment = clean.slice(label.index! + label[0].length, labels[index + 1]?.index);
+    const segment = clean.slice(label.index + label[0].length, labels[index + 1]?.index);
     const range = /(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日(?:至(?:(\d{4})年)?(\d{1,2})月(\d{1,2})日)?休市/.exec(segment);
     if (!range) return null;
     const startYear = range[1] ?? year;

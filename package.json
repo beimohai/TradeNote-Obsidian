@@ -1,6 +1,6 @@
 {
   "name": "tradenote-obsidian",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "本地优先的交易复盘插件，支持日历记录、历史检索、图片附件和可选的 AI 日报与周报分析。",
   "private": true,
   "scripts": {
@@ -8,12 +8,21 @@
     "dev": "node esbuild.config.mjs --watch",
     "build": "node esbuild.config.mjs",
     "check": "tsc --noEmit",
-    "release:files": "pnpm check && pnpm build"
+    "release:files": "pnpm check && pnpm lint && pnpm test && pnpm build",
+    "lint": "eslint src --max-warnings 0 && node scripts/review-audit.cjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "esbuild": "^0.24.2",
-    "obsidian": "^1.7.2",
-    "typescript": "^5.7.2"
+    "esbuild": "^0.28.2",
+    "eslint": "^9.39.5",
+    "eslint-plugin-obsidianmd": "^0.4.2",
+    "obsidian": "^1.13.1",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.72.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "moment": "^2.31.0"
+    }
   }
 }

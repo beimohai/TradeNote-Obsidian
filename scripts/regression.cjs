@@ -5,19 +5,77 @@ const ts = require('typescript');
 const notices = [];
 class TFile {}
 class TFolder {}
+let supportsDeclarative = true;
+const settingRows = [];
+class MockSetting {
+  constructor() { settingRows.push(this); }
+  setName(value) { this.name = value; return this; }
+  setDesc(value) { this.desc = value; return this; }
+  setHeading() { this.heading = true; return this; }
+  control(callback) {
+    const component = { inputEl: {}, setPlaceholder() { return this; }, setValue(value) { this.value = value; return this; }, addOptions() { return this; }, setButtonText() { return this; }, onClick(fn) { this.click = fn; return this; }, onChange(fn) { this.change = fn; return this; } };
+    (this.controls ??= []).push(component); callback(component); return this;
+  }
+  addText(fn) { return this.control(fn); }
+  addToggle(fn) { return this.control(fn); }
+  addButton(fn) { return this.control(fn); }
+  addDropdown(fn) { return this.control(fn); }
+}
 let request = async () => { throw new Error('Unexpected network request'); };
-const obsidian = { App: class {}, ItemView: class {}, MarkdownView: class {}, Modal: class {}, Notice: class { constructor(message) { notices.push(message); } }, Plugin: class {}, PluginSettingTab: class {}, Setting: class {}, TFile, TFolder, normalizePath: s => s.replace(/\\/g, '/'), requestUrl: (...args) => request(...args), setIcon() {} };
+const obsidian = { App: class {}, ItemView: class {}, MarkdownView: class {}, Modal: class {}, Notice: class { constructor(message) { notices.push(message); } }, Plugin: class {}, PluginSettingTab: class {}, Setting: MockSetting, requireApiVersion: () => supportsDeclarative, TFile, TFolder, normalizePath: s => s.replace(/\\/g, '/'), requestUrl: (...args) => request(...args), setIcon() {} };
 const modules = {};
 for (const name of ['market-calendar', 'review-analysis']) {
   const moduleContext = { exports: {} };
   vm.runInNewContext(ts.transpileModule(fs.readFileSync(`src/${name}.ts`, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, moduleContext);
   modules[`./${name}`] = moduleContext.exports;
 }
-const context = { exports: {}, require: name => name === 'obsidian' ? obsidian : modules[name], console, Date, Map, Set, URL, URLSearchParams, window: { setTimeout, clearTimeout } };
-const source = fs.readFileSync('src/main.ts', 'utf8') + '\nObject.assign(exports, { sectionText, marketDateFor, chinaTradingDatesBetween, StockReviewDashboardView });';
+const context = { exports: {}, require: name => name === 'obsidian' ? obsidian : modules[name], console, Date, Map, Set, URL, URLSearchParams, window: { setTimeout, clearTimeout, setInterval: () => 0 } };
+const source = fs.readFileSync('src/main.ts', 'utf8') + '\nObject.assign(exports, { loadReviewSettings, StockReviewSettingTab, sectionText, marketDateFor, StockReviewDashboardView });';
 vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, context);
 const api = context.exports;
 async function main() {
+
+  const defaults = api.loadReviewSettings(null);
+  const invalid = api.loadReviewSettings({ rootFolder: 42, confirmDelete: "false", calendarYears: { bad: ["01-01"], 2027: ["02-30"] }, calendarChecks: { 2027: { lastCheck: "broken", completed: true } } });
+  assert.equal(invalid.rootFolder, defaults.rootFolder);
+  assert.equal(invalid.confirmDelete, true);
+  assert.equal(Object.keys(invalid.calendarYears).length, 0);
+  assert.equal(Object.keys(invalid.calendarChecks).length, 0);
+  const restored = api.loadReviewSettings({ rootFolder: " 自选复盘 ", confirmDelete: false, aiApiKey: "saved-key", calendarYears: { 2027: ["01-01/01-03"] }, calendarChecks: { 2027: { lastCheck: "2026-12-28", completed: true } } });
+  assert.equal(restored.rootFolder, "自选复盘"); assert.equal(restored.confirmDelete, false);
+  assert.equal(restored.aiApiKey, "saved-key"); assert.equal(restored.calendarYears['2027'].length, 3);
+  restored.calendarYears['2027'].push('2027-01-04');
+  assert.equal(Object.keys(api.loadReviewSettings(null).calendarYears).length, 0);
+  const settingsPlugin = new api.default(); settingsPlugin.settings = api.loadReviewSettings(null);
+  let settingSaves = 0; settingsPlugin.saveSettings = async () => { settingSaves++; };
+  const tab = new api.StockReviewSettingTab({}, settingsPlugin);
+  tab.containerEl = { empty() { settingRows.length = 0; } };
+  const definitions = tab.getSettingDefinitions();
+  assert.ok(definitions.every(d => typeof d.name === 'string' && typeof d.render === 'function'));
+  tab.display();
+  assert.equal(settingRows.length, definitions.length + 1); assert.equal(settingRows[0].heading, true);
+  const legacyNames = settingRows.slice(1).map(row => row.name);
+  assert.equal(legacyNames.join('|'), definitions.map(d => d.name).join('|'));
+  const folderRow = settingRows.find(row => row.name === '日报文件夹');
+  await folderRow.controls[0].change('  自选日报  ');
+  assert.equal(settingsPlugin.settings.dailyFolder, '自选日报'); assert.equal(settingSaves, 1);
+  supportsDeclarative = false; tab.refreshSettings();
+  assert.equal(settingRows.length, definitions.length + 1);
+  let updates = 0; tab.update = () => { updates++; };
+  supportsDeclarative = true; tab.refreshSettings(); assert.equal(updates, 1);
+  const startup = new api.default();
+  const editorHandlers = {};
+  startup.loadData = async () => ({ rootFolder: false, confirmDelete: false });
+  startup.registerInterval = startup.registerEvent = startup.addSettingTab = startup.registerView = startup.addRibbonIcon = startup.addCommand = () => {};
+  startup.app = { workspace: { onLayoutReady() {}, on(event, callback) { editorHandlers[event] = callback; } }, vault: { on() {} } };
+  await startup.onload(); assert.equal(startup.settings.rootFolder, defaults.rootFolder); assert.equal(startup.settings.confirmDelete, false);
+  editorHandlers['editor-paste']({ defaultPrevented: true, get clipboardData() { throw Error('Handled paste must not inspect clipboard'); } }, {}, null);
+  let pasted = 0; let prevented = 0;
+  startup.isDailyReview = () => true; startup.insertPastedImage = async () => { pasted++; };
+  const editorInfo = Object.assign(new obsidian.MarkdownView(), { file: new TFile() });
+  editorHandlers['editor-paste']({ defaultPrevented: false, clipboardData: { files: [{ type: 'image/png', name: 'test.png' }] }, preventDefault() { prevented++; } }, {}, editorInfo);
+  assert.equal(pasted, 1); assert.equal(prevented, 1);
+
   const markdown = '# 市场观察\n\n第一行\n第二行\n\n```md\n# 代码内标题\n```\n\n# 今日操作\n\n买入\n';
   assert.match(api.sectionText(markdown, '市场观察'), /第一行\n第二行/);
   assert.match(api.sectionText(markdown, '市场观察'), /代码内标题/);
@@ -27,7 +85,6 @@ async function main() {
   assert.equal(api.marketDateFor(new Date('2026-10-08T14:59:00')), '2026-09-30');
   assert.equal(api.marketDateFor(new Date('2026-10-08T15:00:00')), '2026-10-08');
   assert.equal(api.marketDateFor(new Date('2026-10-04T16:00:00')), '2026-09-30');
-  assert.equal(api.chinaTradingDatesBetween('2026-05-14', '2026-09-30').length, 98);
   const dashboard = new api.StockReviewDashboardView();
   dashboard.quickFilter = 'all'; dashboard.sectionFilter = '市场观察'; dashboard.query = '';
   const entry = { date: '2026-10-15', sections: { 市场观察: '' }, text: '' };

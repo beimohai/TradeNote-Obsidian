@@ -1,9 +1,30 @@
-import { App, ItemView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, normalizePath, requestUrl, setIcon } from "obsidian";
+import { App, ItemView, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting, TFile, TFolder, WorkspaceLeaf, normalizePath, requestUrl, requireApiVersion, setIcon } from "obsidian";
 import { builtInClosures, expandClosures, HOLIDAY_RANGES, calendarCheckTarget, parseAnnualClosures } from "./market-calendar";
 import { plainReviewText, reviewRange, ReviewPeriod } from "./review-analysis";
 
 interface StockReviewSettings { rootFolder: string; dailyFolder: string; attachmentFolder: string; confirmDelete: boolean; summaryOneLine: boolean; aiBaseUrl: string; aiApiKey: string; aiModel: string; calendarYears: Record<string, string[]>; calendarChecks: Record<string, { lastCheck: string; completed?: boolean; source?: string }>; }
 const DEFAULT_SETTINGS: StockReviewSettings = { rootFolder: "交易复盘", dailyFolder: "日报", attachmentFolder: "附件", confirmDelete: true, summaryOneLine: true, aiBaseUrl: "", aiApiKey: "", aiModel: "", calendarYears: {}, calendarChecks: {} };
+
+function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
+function loadReviewSettings(value: unknown): StockReviewSettings {
+  const settings = { ...DEFAULT_SETTINGS, calendarYears: {} as Record<string, string[]>, calendarChecks: {} as StockReviewSettings["calendarChecks"] };
+  if (!isRecord(value)) return settings;
+  for (const key of ["rootFolder", "dailyFolder", "attachmentFolder", "aiBaseUrl", "aiApiKey", "aiModel"] as const) {
+    const saved = value[key];
+    if (typeof saved === "string") settings[key] = saved.trim() || DEFAULT_SETTINGS[key];
+  }
+  for (const key of ["confirmDelete", "summaryOneLine"] as const) if (typeof value[key] === "boolean") settings[key] = value[key];
+  if (isRecord(value.calendarYears)) for (const [year, dates] of Object.entries(value.calendarYears)) {
+    if (!/^\d{4}$/.test(year) || !Array.isArray(dates) || !dates.every((date: unknown): date is string => typeof date === "string")) continue;
+    try { settings.calendarYears[year] = expandClosures(year, dates.join("\n")); } catch { /* Ignore malformed persisted calendar data. */ }
+  }
+  if (isRecord(value.calendarChecks)) for (const [year, state] of Object.entries(value.calendarChecks)) {
+    if (!/^\d{4}$/.test(year) || !isRecord(state) || typeof state.lastCheck !== "string" || !isValidDate(state.lastCheck)) continue;
+    settings.calendarChecks[year] = { lastCheck: state.lastCheck, completed: state.completed === true, ...(typeof state.source === "string" ? { source: state.source } : {}) };
+  }
+  return settings;
+}
+
 const SECTIONS = ["市场观察", "昨日验证", "今日操作", "今日反思", "明日计划"] as const;
 export const DASHBOARD_VIEW_TYPE = "tradenote-dashboard";
 type Section = typeof SECTIONS[number];
@@ -34,14 +55,6 @@ function reviewDateFor(date: string): string {
   return dateString(value);
 }
 function marketDateFor(now = new Date()): string { const date = dateString(now); return isChinaTradingDay(date) && now.getHours() >= 15 ? date : adjacentChinaTradingDay(date, -1); }
-function previousDate(date: string): string { const [year, month, day] = date.split("-").map(Number); return dateString(new Date(year, month - 1, day - 1)); }
-function pause(milliseconds: number): Promise<void> { return new Promise((resolve) => window.setTimeout(resolve, milliseconds)); }
-function nextDate(date: string): string { const [year, month, day] = date.split("-").map(Number); return dateString(new Date(year, month - 1, day + 1)); }
-function chinaTradingDatesBetween(start: string, end: string): string[] {
-  const dates: string[] = [];
-  for (let cursor = start; cursor <= end; cursor = nextDate(cursor)) if (isChinaTradingDay(cursor)) dates.push(cursor);
-  return dates;
-}
 function isImageFile(file: File): boolean { return file.type.startsWith("image/") || /\.(png|jpe?g|gif|webp|svg)$/i.test(file.name); }
 function reviewDateFromBasename(basename: string): string { return /^\d{8}复盘$/.test(basename) ? `${basename.slice(0, 4)}-${basename.slice(4, 6)}-${basename.slice(6, 8)}` : basename; }
 function joinPath(...parts: string[]): string { return normalizePath(parts.filter(Boolean).join("/")); }
@@ -67,34 +80,77 @@ function excerpt(value: string): string {
   return compact.length > 180 ? `${compact.slice(0, 180)}...` : compact;
 }
 
+interface ReviewSettingDefinition {
+  name: string;
+  desc: string;
+  render: (setting: Setting) => void;
+}
+
 class StockReviewSettingTab extends PluginSettingTab {
   private availableModels: string[] = [];
   constructor(app: App, private readonly plugin: StockReviewPlugin) { super(app, plugin); }
-  display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
-    containerEl.createEl("h2", { text: "TradeNote 设置" });
-    new Setting(containerEl).setName("年度休市日历").setDesc(`每年12月第四个星期一起每日检查，获取次年完整安排后停止。内置2024—2026年，周末固定休市。已补充：${Object.keys(this.plugin.settings.calendarYears ?? {}).join("、") || "无"}`).addButton(button => button.setButtonText("补充年度").onClick(() => new MarketCalendarModal(this.app, this.plugin).open()));
-    this.addFolderSetting(containerEl, "复盘根文件夹", "日报和附件的共同根目录。", "rootFolder", DEFAULT_SETTINGS.rootFolder);
-    this.addFolderSetting(containerEl, "日报文件夹", "相对于复盘根文件夹。", "dailyFolder", DEFAULT_SETTINGS.dailyFolder);
-    this.addFolderSetting(containerEl, "附件文件夹", "粘贴到日复盘的图片会按日期保存到这里。", "attachmentFolder", DEFAULT_SETTINGS.attachmentFolder);
-    new Setting(containerEl).setName("删除前二次确认").setDesc("删除复盘及其附件前显示确认对话框。").addToggle((toggle) => toggle.setValue(this.plugin.settings.confirmDelete).onChange(async (value) => {
-      this.plugin.settings.confirmDelete = value;
-      await this.plugin.saveSettings();
-    }));
-    new Setting(containerEl).setName("记录摘要只展示一行").setDesc("关闭后，摘要正文可在自身列内换行，不会占用板块标题列。").addToggle((toggle) => toggle.setValue(this.plugin.settings.summaryOneLine).onChange(async (value) => {
-      this.plugin.settings.summaryOneLine = value;
-      await this.plugin.saveSettings();
-    }));
-    new Setting(containerEl).setName("兼容 OpenAI 的 API 地址").setDesc("可选。填写 Chat Completions 完整地址，例如 https://api.openai.com/v1/chat/completions；用于分析所选日报或周报的文字内容。").addText((text) => text.setPlaceholder("https://.../v1/chat/completions").setValue(this.plugin.settings.aiBaseUrl).onChange(async (value) => { this.plugin.settings.aiBaseUrl = value.trim(); await this.plugin.saveSettings(); }));
-    new Setting(containerEl).setName("API Key").setDesc("可选。本地保存于 Obsidian 插件数据；留空则不会发送 AI 请求。").addText((text) => { text.inputEl.type = "password"; text.setValue(this.plugin.settings.aiApiKey).onChange(async (value) => { this.plugin.settings.aiApiKey = value.trim(); await this.plugin.saveSettings(); }); });
-    const modelSetting = new Setting(containerEl).setName("AI 模型").setDesc("可手动填写，或获取兼容 API 的模型列表后选择。");
-    if (this.availableModels.length) modelSetting.addDropdown((dropdown) => dropdown.addOptions(Object.fromEntries(this.availableModels.map((model) => [model, model]))).setValue(this.availableModels.includes(this.plugin.settings.aiModel) ? this.plugin.settings.aiModel : this.availableModels[0]).onChange(async (value) => { this.plugin.settings.aiModel = value; await this.plugin.saveSettings(); }));
-    else modelSetting.addText((text) => text.setPlaceholder("gpt-4.1-mini").setValue(this.plugin.settings.aiModel).onChange(async (value) => { this.plugin.settings.aiModel = value.trim(); await this.plugin.saveSettings(); }));
-    modelSetting.addButton((button) => button.setButtonText("获取模型列表").onClick(async () => { try { this.availableModels = await this.plugin.listAiModels(); if (!this.availableModels.length) throw new Error("接口未返回模型"); if (this.plugin.settings.aiModel && !this.availableModels.includes(this.plugin.settings.aiModel)) this.availableModels.unshift(this.plugin.settings.aiModel); this.display(); new Notice(`已读取 ${this.availableModels.length} 个模型`); } catch (error) { new Notice(`获取模型失败：${error instanceof Error ? error.message : String(error)}`); } })).addButton((button) => button.setButtonText("测试 AI").onClick(async () => { try { await this.plugin.testAi(); new Notice("AI 连接正常"); } catch (error) { new Notice(`AI 测试失败：${error instanceof Error ? error.message : String(error)}`); } }));
+
+  getSettingDefinitions(): ReviewSettingDefinition[] {
+    return [
+      { name: "年度休市日历", desc: `每年12月第四个星期一起每日检查，获取次年完整安排后停止。内置2024—2026年，周末固定休市。已补充：${Object.keys(this.plugin.settings.calendarYears).join("、") || "无"}`,
+        render: setting => { setting.addButton(button => button.setButtonText("补充年度").onClick(() => new MarketCalendarModal(this.app, this.plugin).open())); } },
+      this.folderDefinition("复盘根文件夹", "日报和附件的共同根目录。", "rootFolder"),
+      this.folderDefinition("日报文件夹", "相对于复盘根文件夹。", "dailyFolder"),
+      this.folderDefinition("附件文件夹", "粘贴到日复盘的图片会按日期保存到这里。", "attachmentFolder"),
+      { name: "删除前二次确认", desc: "删除复盘及其附件前显示确认对话框。", render: setting => {
+        setting.addToggle(toggle => toggle.setValue(this.plugin.settings.confirmDelete).onChange(async value => { this.plugin.settings.confirmDelete = value; await this.plugin.saveSettings(); }));
+      } },
+      { name: "记录摘要只展示一行", desc: "关闭后，摘要正文可在自身列内换行，不会占用板块标题列。", render: setting => {
+        setting.addToggle(toggle => toggle.setValue(this.plugin.settings.summaryOneLine).onChange(async value => { this.plugin.settings.summaryOneLine = value; await this.plugin.saveSettings(); }));
+      } },
+
+      { name: "兼容 OpenAI 的 API 地址", desc: "可选。填写 Chat Completions 完整地址；用于分析日报或周报的文字内容。", render: setting => {
+        setting.addText(text => text.setPlaceholder("https://.../v1/chat/completions").setValue(this.plugin.settings.aiBaseUrl).onChange(async value => { this.plugin.settings.aiBaseUrl = value.trim(); await this.plugin.saveSettings(); }));
+      } },
+      { name: "API Key", desc: "可选。本地保存于插件设置；留空则不会发送 AI 请求。", render: setting => {
+        setting.addText(text => { text.inputEl.type = "password"; text.setValue(this.plugin.settings.aiApiKey).onChange(async value => { this.plugin.settings.aiApiKey = value.trim(); await this.plugin.saveSettings(); }); });
+      } },
+      { name: "AI 模型", desc: "可手动填写，或获取兼容 API 的模型列表后选择。", render: setting => this.renderModelSetting(setting) },
+    ];
   }
-  private addFolderSetting(containerEl: HTMLElement, name: string, description: string, key: "rootFolder" | "dailyFolder" | "attachmentFolder", fallback: string): void {
-    new Setting(containerEl).setName(name).setDesc(description).addText((text) => text.setValue(this.plugin.settings[key]).onChange(async (value) => { this.plugin.settings[key] = value.trim() || fallback; await this.plugin.saveSettings(); }));
+
+  // Obsidian 1.7.2—1.12 use this fallback; 1.13+ renders and indexes definitions.
+  display(): void { this.renderLegacySettings(); }
+
+  private renderLegacySettings(): void {
+    this.containerEl.empty();
+    new Setting(this.containerEl).setName("复盘记录").setHeading();
+    for (const definition of this.getSettingDefinitions()) {
+      definition.render(new Setting(this.containerEl).setName(definition.name).setDesc(definition.desc));
+    }
+  }
+
+  private refreshSettings(): void {
+    if (requireApiVersion("1.13.0")) this.update();
+    else this.renderLegacySettings();
+  }
+
+  private folderDefinition(name: string, desc: string, key: "rootFolder" | "dailyFolder" | "attachmentFolder"): ReviewSettingDefinition {
+    return { name, desc, render: setting => {
+      setting.addText(text => text.setValue(this.plugin.settings[key]).onChange(async value => { this.plugin.settings[key] = value.trim() || DEFAULT_SETTINGS[key]; await this.plugin.saveSettings(); }));
+    } };
+  }
+
+  private renderModelSetting(setting: Setting): void {
+    if (this.availableModels.length) setting.addDropdown(dropdown => dropdown.addOptions(Object.fromEntries(this.availableModels.map(model => [model, model]))).setValue(this.availableModels.includes(this.plugin.settings.aiModel) ? this.plugin.settings.aiModel : this.availableModels[0]).onChange(async value => { this.plugin.settings.aiModel = value; await this.plugin.saveSettings(); }));
+    else setting.addText(text => text.setPlaceholder("模型名称").setValue(this.plugin.settings.aiModel).onChange(async value => { this.plugin.settings.aiModel = value.trim(); await this.plugin.saveSettings(); }));
+    setting.addButton(button => button.setButtonText("获取模型列表").onClick(async () => {
+      try {
+        this.availableModels = await this.plugin.listAiModels();
+        if (!this.availableModels.length) throw new Error("接口未返回模型");
+        if (this.plugin.settings.aiModel && !this.availableModels.includes(this.plugin.settings.aiModel)) this.availableModels.unshift(this.plugin.settings.aiModel);
+        this.refreshSettings();
+        new Notice(`已读取 ${this.availableModels.length} 个模型`);
+      } catch (error) { new Notice(`获取模型失败：${error instanceof Error ? error.message : String(error)}`); }
+    })).addButton(button => button.setButtonText("测试 AI").onClick(async () => {
+      try { await this.plugin.testAi(); new Notice("AI 连接正常"); }
+      catch (error) { new Notice(`AI 测试失败：${error instanceof Error ? error.message : String(error)}`); }
+    }));
   }
 }
 
@@ -108,7 +164,7 @@ class MarketCalendarModal extends Modal {
     const fill = () => { year = yearInput.value; dates.value = (this.plugin.settings.calendarYears?.[year] ?? HOLIDAY_RANGES[year] ?? []).join("\n"); };
     yearInput.addEventListener("change", fill); fill();
     const official = this.contentEl.createEl("a", { text: "交易所年度休市安排", href: "https://www.sse.com.cn/disclosure/dealinstruc/closed/", attr: { target: "_blank", rel: "noopener noreferrer" } });
-    official.style.display = "block";
+    official.addClass("tradenote-calendar-source");
     const save = this.contentEl.createEl("button", { text: "保存年度休市日", cls: "mod-cta" });
     save.addEventListener("click", () => { void (async () => { try {
       const expanded = expandClosures(yearInput.value, dates.value);
@@ -329,7 +385,7 @@ class StockReviewDashboardView extends ItemView {
     heading.createEl("h3", { text: "复盘资料库" });
     const headerControls = header.createDiv({ cls: "tradenote-library-header-controls" });
     const search = headerControls.createEl("input", { type: "search", value: this.query, placeholder: "搜索日期或正文", cls: "tradenote-search", attr: { "aria-label": "搜索复盘" } });
-    search.addEventListener("input", (event) => { if ((event as InputEvent).isComposing) return; this.query = search.value.toLowerCase().trim(); this.resultLimit = 40; void this.render(); });
+    search.addEventListener("input", (event) => { if (event instanceof InputEvent && event.isComposing) return; this.query = search.value.toLowerCase().trim(); this.resultLimit = 40; void this.render(); });
     search.addEventListener("compositionend", () => { this.query = search.value.toLowerCase().trim(); this.resultLimit = 40; void this.render(); });
     const sort = headerControls.createEl("select", { cls: "tradenote-sort", attr: { "aria-label": "排序方式" } });
     for (const [value, label] of [["date-descending", "日期新到旧"], ["date-ascending", "日期旧到新"], ["modified-descending", "修改新到旧"], ["modified-ascending", "修改旧到新"]]) sort.createEl("option", { text: label, value });
@@ -419,7 +475,7 @@ class StockReviewDashboardView extends ItemView {
     const remove = async (): Promise<void> => {
       try {
         const leaves = this.app.workspace.getLeavesOfType("markdown").filter((leaf) => leaf.view instanceof MarkdownView && leaf.view.file?.path === entry.file.path);
-        await Promise.all(leaves.map((leaf) => leaf.detach()));
+        for (const leaf of leaves) leaf.detach();
         await this.plugin.deleteAttachmentsForDate(entry.date);
         await this.app.fileManager.trashFile(entry.file);
         new Notice(`已删除 ${entry.date} 的复盘及附件`);
@@ -453,7 +509,8 @@ export default class StockReviewPlugin extends Plugin {
 
   private pendingDailyFiles = new Map<string, Promise<TFile>>();
   async onload(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const savedSettings: unknown = await this.loadData();
+    this.settings = loadReviewSettings(savedSettings);
     this.applyCalendar();
     this.app.workspace.onLayoutReady(() => { if (!this.calendarCheckStopped) void this.checkAnnualCalendar(); });
     this.registerInterval(window.setInterval(() => void this.checkAnnualCalendar(), 60 * 60 * 1000));
@@ -467,7 +524,7 @@ export default class StockReviewPlugin extends Plugin {
     this.registerEvent(this.app.vault.on("create", (file) => this.scheduleRefreshFor(file.path)));
     this.registerEvent(this.app.vault.on("delete", (file) => this.scheduleRefreshFor(file.path)));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => { this.scheduleRefreshFor(file.path); this.scheduleRefreshFor(oldPath); }));
-    this.registerEvent(this.app.workspace.on("editor-paste", (evt, editor, info) => { if (!(info instanceof MarkdownView) || !info.file || !this.isDailyReview(info.file)) return; const image = Array.from(evt.clipboardData?.files ?? []).find(isImageFile); if (!image) return; evt.preventDefault(); void this.insertPastedImage(image, editor, info.file); }));
+    this.registerEvent(this.app.workspace.on("editor-paste", (evt, editor, info) => { if (evt.defaultPrevented || !(info instanceof MarkdownView) || !info.file || !this.isDailyReview(info.file)) return; const image = Array.from(evt.clipboardData?.files ?? []).find(isImageFile); if (!image) return; evt.preventDefault(); void this.insertPastedImage(image, editor, info.file); }));
     this.registerEvent(this.app.workspace.on("editor-drop", (evt, editor, info) => {
       if (evt.defaultPrevented || !(info instanceof MarkdownView) || !info.file || !this.isDailyReview(info.file)) return;
       const images = Array.from(evt.dataTransfer?.files ?? []).filter(isImageFile);
@@ -698,6 +755,6 @@ export default class StockReviewPlugin extends Plugin {
   }
   private imageExtension(mimeType: string): string { return ({ "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/svg+xml": "svg" } as Record<string, string>)[mimeType] ?? ""; }
   private dailyTemplate(_date: string): string { return "# 市场观察\n\n# 昨日验证\n\n# 今日操作\n\n# 今日反思\n\n# 明日计划\n"; }
-  async openSettings(): Promise<void> { await (this.app as App & { setting: { open(): void; openTabById(id: string): void } }).setting.open(); (this.app as App & { setting: { open(): void; openTabById(id: string): void } }).setting.openTabById(this.manifest.id); }
+  async openSettings(): Promise<void> { (this.app as App & { setting: { open(): void; openTabById(id: string): void } }).setting.open(); (this.app as App & { setting: { open(): void; openTabById(id: string): void } }).setting.openTabById(this.manifest.id); }
   async restart(): Promise<void> { const plugins = (this.app as App & { plugins: { disablePlugin(id: string): Promise<void>; enablePlugin(id: string): Promise<void> } }).plugins; await plugins.disablePlugin(this.manifest.id); await plugins.enablePlugin(this.manifest.id); }
 }

@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -22,12 +24,27 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
       - name: 核对发布版本
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: node -e "const m=require('./manifest.json'),p=require('./package.json'),v=require('./versions.json');if(process.env.RELEASE_TAG!==m.version||p.version!==m.version||v[m.version]!==m.minAppVersion)throw Error('Release version mismatch')"
+      - name: 生成安装文件的构建来源证明
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+      - name: 验证安装文件的来源证明
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for file in main.js manifest.json styles.css; do
+            gh attestation verify "$file" --repo "$GITHUB_REPOSITORY"
+          done
       - name: 发布插件安装文件
         env:
           GH_TOKEN: ${{ github.token }}

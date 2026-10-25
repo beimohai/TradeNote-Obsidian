@@ -1,0 +1,10 @@
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8'));
+assert.match(manifest.description, /[.!?]$/, 'Manifest description must end with supported punctuation');
+assert.equal(pkg.version, manifest.version);
+assert.equal(versions[manifest.version], manifest.minAppVersion);
+assert.doesNotMatch(fs.readFileSync('styles.css', 'utf8'), /!important/i);
+console.log('PASS: manifest punctuation, release metadata and CSS review checks');

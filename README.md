@@ -24,6 +24,8 @@
 
 ### 从 GitHub 下载并安装
 
+需要 Obsidian 1.7.2 或更高版本；在 1.13 及以上版本中，插件设置支持全局设置搜索。
+
 1. 打开[版本发布页](https://github.com/beimohai/TradeNote-Obsidian/releases/latest)，下载 `main.js`、`manifest.json` 和 `styles.css` 三个文件；
 2. 在 Obsidian 仓库的 `.obsidian/plugins/` 目录下新建 `tradenote` 文件夹，将三个文件放入其中；如果看不到 `.obsidian`，需打开系统的“显示隐藏文件”选项；
 3. 重启 Obsidian，在“设置 → 第三方插件”中启用 **TradeNote**；
@@ -47,6 +49,7 @@
 ```bash
 pnpm install --frozen-lockfile
 pnpm check
+pnpm lint
 pnpm test
 pnpm build
 ```
@@ -129,6 +132,8 @@ pnpm build
 - AI 为可选功能。运行分析或测试连接、获取模型列表时，会请求你配置的服务；服务可能需要账户或产生费用，按服务方规则执行；
 - AI 分析会发送所选日期范围内剔除图片引用后的复盘文字，请根据自己的需要选择服务；
 - 接口密钥保存在当前仓库的 `.obsidian/plugins/tradenote/data.json` 中，请勿将该文件提交到公开仓库。
+- 历史检索和附件统计会枚举仓库中的文件路径；删除附件前会检查其他 Markdown 笔记的引用，避免误删仍被使用的图片。相关读取在本地完成，AI 分析只发送所选范围内的复盘文字；
+- 剪贴板仅在点击“复制”时写入相应文字，粘贴图片时读取本次粘贴事件携带的图片，不会在后台读取系统剪贴板。
 
 插件用于记录和回顾交易，不提供投资建议。
 
