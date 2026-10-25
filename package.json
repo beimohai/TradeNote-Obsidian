@@ -1,7 +1,7 @@
 {
   "name": "tradenote-obsidian",
   "version": "0.1.1",
-  "description": "Local-first Markdown trading journal for Obsidian.",
+  "description": "本地优先的交易复盘插件，支持日历记录、历史检索、图片附件和可选的 AI 日报与周报分析。",
   "private": true,
   "scripts": {
     "test": "node scripts/regression.cjs",

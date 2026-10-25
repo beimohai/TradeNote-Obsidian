@@ -1,4 +1,4 @@
-name: Release
+name: 版本发布
 
 on:
   push:
@@ -24,11 +24,11 @@ jobs:
       - run: pnpm check
       - run: pnpm test
       - run: pnpm build
-      - name: Validate version
+      - name: 核对发布版本
         env:
           RELEASE_TAG: ${{ github.ref_name }}
         run: node -e "const m=require('./manifest.json'),p=require('./package.json'),v=require('./versions.json');if(process.env.RELEASE_TAG!==m.version||p.version!==m.version||v[m.version]!==m.minAppVersion)throw Error('Release version mismatch')"
-      - name: Publish installation files
+      - name: 发布插件安装文件
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
@@ -36,5 +36,5 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" main.js manifest.json styles.css --clobber
           else
-            gh release create "$RELEASE_TAG" main.js manifest.json styles.css --title "$RELEASE_TAG" --generate-notes
+            gh release create "$RELEASE_TAG" main.js manifest.json styles.css --title "复盘札记 $RELEASE_TAG" --notes "支持日历复盘、历史检索、图片附件和可选的 AI 日报与周报分析。安装时请下载 main.js、manifest.json、styles.css，放入 Obsidian 仓库的 .obsidian/plugins/tradenote/ 目录；更新时保留原有 data.json。详细变更请查看项目的更新记录。"
           fi
