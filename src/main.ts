@@ -274,7 +274,7 @@ class StockReviewDashboardView extends ItemView {
   private async render(): Promise<void> {
     const version = ++this.renderVersion;
     const scrollTop = this.contentEl.scrollTop;
-    const activeSearch = document.activeElement instanceof HTMLInputElement && document.activeElement.matches(".tradenote-search") ? document.activeElement : null;
+    const activeSearch = document.activeElement?.instanceOf(HTMLInputElement) && document.activeElement.matches(".tradenote-search") ? document.activeElement : null;
     const searchCaret = activeSearch?.selectionStart ?? null;
     const entries = await this.plugin.getReviewEntries();
     if (version !== this.renderVersion) return;
@@ -385,7 +385,7 @@ class StockReviewDashboardView extends ItemView {
     heading.createEl("h3", { text: "复盘资料库" });
     const headerControls = header.createDiv({ cls: "tradenote-library-header-controls" });
     const search = headerControls.createEl("input", { type: "search", value: this.query, placeholder: "搜索日期或正文", cls: "tradenote-search", attr: { "aria-label": "搜索复盘" } });
-    search.addEventListener("input", (event) => { if (event instanceof InputEvent && event.isComposing) return; this.query = search.value.toLowerCase().trim(); this.resultLimit = 40; void this.render(); });
+    search.addEventListener("input", (event) => { const inputEvent = event as UIEvent; if (inputEvent.instanceOf(InputEvent) && inputEvent.isComposing) return; this.query = search.value.toLowerCase().trim(); this.resultLimit = 40; void this.render(); });
     search.addEventListener("compositionend", () => { this.query = search.value.toLowerCase().trim(); this.resultLimit = 40; void this.render(); });
     const sort = headerControls.createEl("select", { cls: "tradenote-sort", attr: { "aria-label": "排序方式" } });
     for (const [value, label] of [["date-descending", "日期新到旧"], ["date-ascending", "日期旧到新"], ["modified-descending", "修改新到旧"], ["modified-ascending", "修改旧到新"]]) sort.createEl("option", { text: label, value });

@@ -18,7 +18,7 @@
 
 更新日志：[更新记录](CHANGELOG.md)
 
-如果发现问题或有功能建议，欢迎通过[问题反馈](https://github.com/beimohai/TradeNote-Obsidian/issues)交流。
+如果发现问题或有功能建议，欢迎 B 站私信[北漠海](https://space.bilibili.com/1065768987)，或加 QQ 群 **588526922** 交流反馈。也可以通过[问题反馈](https://github.com/beimohai/TradeNote-Obsidian/issues)提交问题。
 
 ## 快速入门
 
@@ -44,7 +44,7 @@
 
 ### 从源码构建
 
-需要 Node.js 20 或更高版本，以及 pnpm 9 或更高版本：
+需要 Node.js 22.13 或更高版本，以及 pnpm 11.25.0：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -137,7 +137,13 @@ pnpm build
 
 插件用于记录和回顾交易，不提供投资建议。
 
-## 反馈与支持
+## 赞助与支持
+
+如果你喜欢我的插件，你可以在这里对我表达支持，谢谢！
+
+![微信与支付宝收款码](src/assets/community/support.png)
+
+交流群：QQ 群 **588526922**。
 
 - [问题反馈](https://github.com/beimohai/TradeNote-Obsidian/issues)
 - [提交改进](https://github.com/beimohai/TradeNote-Obsidian/pulls)
@@ -149,3 +155,45 @@ pnpm build
 本项目基于 [MIT 开源协议](LICENSE) 开源。
 
 _世界因开源更精彩_
+
+---
+
+## English overview
+
+TradeNote is a local-first trading journal for [Obsidian](https://obsidian.md/). Record market observations, verify previous plans, document trades, reflect on decisions, and prepare the next trading day in ordinary Markdown notes. Your journal and image attachments remain readable and editable without the plugin.
+
+### Features
+
+- A trading-day calendar with section completion indicators.
+- Five-section daily notes and carryover of the previous review’s plan.
+- Search and filter past reviews by date, month, text, section, and whether a section has been written.
+- Paste or drop images into review notes and organize attachments by date.
+- Optional text-only AI analysis for daily and weekly reviews through a compatible Chat Completions API.
+- Built-in Chinese stock-market holidays for 2024–2026, manual additions, and annual updates from the Shanghai Stock Exchange.
+
+### Installation
+
+Requires Obsidian 1.7.2 or later. Settings are searchable on Obsidian 1.13 and later.
+
+1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/beimohai/TradeNote-Obsidian/releases/latest).
+2. Create `.obsidian/plugins/tradenote/` inside your vault and place the three files in that folder.
+3. Restart Obsidian and enable **TradeNote** under **Settings → Community plugins**.
+4. Open the review dashboard from the ribbon or command palette and select a trading day to start writing.
+
+When updating manually, replace only those three files and keep your existing `data.json`.
+
+### Privacy and network access
+
+Basic journaling does not require an AI account. Journal notes and attachments are stored in your vault. The plugin enumerates file paths for review search and attachment statistics, and checks other Markdown notes before deleting attachments to avoid removing images still in use. Clipboard writes happen when you select a copy action; image pasting reads only the image provided by the paste event, with no background clipboard reading.
+
+Annual calendar updates contact the Shanghai Stock Exchange. If you choose AI analysis, text from the selected review period is sent to your configured provider after image references are removed. Image files are not read for analysis. Connection tests and model-list requests also contact that provider, which may require an account or charge fees. API credentials are stored in `.obsidian/plugins/tradenote/data.json`; do not publish this file.
+
+### Development
+
+Use Node.js 22.13 or later and pnpm 11.25.0. Run `pnpm install --frozen-lockfile`, followed by `pnpm release:files` to check types, lint, run tests, and build. Release tags use the exact numeric version in `manifest.json`, for example `0.1.3`, without a `v` prefix.
+
+### Support and license
+
+Report problems through [GitHub issues](https://github.com/beimohai/TradeNote-Obsidian/issues), contact [北漠海 on Bilibili](https://space.bilibili.com/1065768987), or join QQ group **588526922**. Optional donations are welcome through the WeChat Pay and Alipay codes in the Chinese support section above. Donations are not required to use any feature.
+
+TradeNote is released under the [MIT License](LICENSE). It helps record and review trading decisions and does not provide investment advice.

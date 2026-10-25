@@ -15,6 +15,7 @@ export default [{
     "@typescript-eslint/no-unnecessary-type-assertion": "error",
     "@typescript-eslint/no-deprecated": "error",
     "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    "obsidianmd/prefer-instanceof": "error",
     "obsidianmd/no-static-styles-assignment": "error",
     "obsidianmd/no-unsupported-api": "error",
     "obsidianmd/editor-drop-paste": "error",

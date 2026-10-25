@@ -2,7 +2,7 @@ name: 版本发布
 
 on:
   push:
-    tags: ['*']
+    tags: ["[0-9]*.[0-9]*.[0-9]*"]
   workflow_dispatch:
 
 permissions:
@@ -17,10 +17,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 11.25.0
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
@@ -30,7 +30,7 @@ jobs:
       - name: 核对发布版本
         env:
           RELEASE_TAG: ${{ github.ref_name }}
-        run: node -e "const m=require('./manifest.json'),p=require('./package.json'),v=require('./versions.json');if(process.env.RELEASE_TAG!==m.version||p.version!==m.version||v[m.version]!==m.minAppVersion)throw Error('Release version mismatch')"
+        run: node -e "const m=require('./manifest.json'),p=require('./package.json'),v=require('./versions.json');if(!/^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)$/.test(m.version)||process.env.RELEASE_TAG!==m.version||p.version!==m.version||v[m.version]!==m.minAppVersion)throw Error('Release version mismatch')"
       - name: 生成安装文件的构建来源证明
         uses: actions/attest@v4
         with:
@@ -53,5 +53,5 @@ jobs:
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" main.js manifest.json styles.css --clobber
           else
-            gh release create "$RELEASE_TAG" main.js manifest.json styles.css --title "复盘札记 $RELEASE_TAG" --notes "支持日历复盘、历史检索、图片附件和可选的 AI 日报与周报分析。安装时请下载 main.js、manifest.json、styles.css，放入 Obsidian 仓库的 .obsidian/plugins/tradenote/ 目录；更新时保留原有 data.json。详细变更请查看项目的更新记录。"
+            gh release create "$RELEASE_TAG" main.js manifest.json styles.css --title "$RELEASE_TAG" --notes-file RELEASE_NOTES.md
           fi
