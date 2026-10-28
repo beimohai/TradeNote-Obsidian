@@ -1,0 +1,10 @@
+import { cp, mkdir, readdir } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const target = path.join(root, "dist", "tradenote");
+await mkdir(target, { recursive: true });
+const files = ["main.js", "manifest.json", "styles.css"];
+for (const item of await readdir(target)) if (!files.includes(item)) throw new Error(`Unexpected release file: ${item}; remove it before packaging`);
+for (const file of files) await cp(path.join(root, file), path.join(target, file));
+console.log(`Release files: ${target}`);

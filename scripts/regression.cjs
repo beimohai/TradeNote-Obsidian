@@ -13,7 +13,7 @@ class MockSetting {
   setDesc(value) { this.desc = value; return this; }
   setHeading() { this.heading = true; return this; }
   control(callback) {
-    const component = { inputEl: {}, setPlaceholder() { return this; }, setValue(value) { this.value = value; return this; }, addOptions() { return this; }, setButtonText() { return this; }, onClick(fn) { this.click = fn; return this; }, onChange(fn) { this.change = fn; return this; } };
+    const component = { inputEl: {}, setPlaceholder() { return this; }, setValue(value) { this.value = value; return this; }, addOptions() { return this; }, setButtonText() { return this; }, setDisabled(value) { this.disabled = value; return this; }, onClick(fn) { this.click = fn; return this; }, onChange(fn) { this.change = fn; return this; } };
     (this.controls ??= []).push(component); callback(component); return this;
   }
   addText(fn) { return this.control(fn); }
@@ -157,6 +157,33 @@ async function main() {
   assert.doesNotMatch(report, /b.png/);
   reviewer.getReviewEntries = async () => [];
   await assert.rejects(reviewer.analyzeReview('2026-10-22', 'daily'), /没有可分析/);
+  const modelPlugin = new api.default(); modelPlugin.settings = api.loadReviewSettings({ aiBaseUrl: 'https://a.example/chat/completions', aiApiKey: 'fixture', aiModel: 'manual-model' });
+  const modelTab = new api.StockReviewSettingTab({}, modelPlugin); modelTab.refreshSettings = () => {};
+  let finishModels; modelPlugin.listAiModels = () => new Promise(resolve => { finishModels = resolve; });
+  const pendingRow = new MockSetting(); modelTab.renderModelSetting(pendingRow);
+  const fetching = pendingRow.controls[1].click(); modelPlugin.settings.aiBaseUrl = 'https://b.example/chat/completions'; finishModels(['obsolete-model']); await fetching;
+  assert.equal(modelTab.availableModels.length, 0, 'late model response cannot replace a different provider list');
+  assert.equal(pendingRow.controls[1].disabled, false, 'fetch button is restored after rejection');
+  modelPlugin.listAiModels = async () => ['provider-b-model'];
+  const fetchedRow = new MockSetting(); modelTab.renderModelSetting(fetchedRow); await fetchedRow.controls[1].click();
+  const selectableRow = new MockSetting(); modelTab.renderModelSetting(selectableRow);
+  modelPlugin.settings.aiApiKey = 'different-fixture'; await selectableRow.controls[1].change('provider-b-model');
+  assert.equal(modelPlugin.settings.aiModel, 'manual-model', 'a stale dropdown cannot save a model after credentials change');
+  console.log('PASS: model-list response races, stale selections and fetch-button recovery');
+  const reader = new api.default(); reader.settings = api.loadReviewSettings(null);
+  const reviewFile = { path: '交易复盘/日报/2026/10/20261028复盘.md', name: '20261028复盘.md', basename: '20261028复盘', extension: 'md' };
+  let reviewText = '# 市场观察\n原文\n# 今日反思\n反思', cachedReads = 0;
+  reader.app = { vault: {
+    getMarkdownFiles: () => [reviewFile],
+    getFiles: () => [reviewFile, { path: '交易复盘/附件/2026/10/28/image.png', extension: 'png' }],
+    cachedRead: async () => { cachedReads++; return reviewText; },
+    read: async () => { throw new Error('Dashboard should use the Vault read cache'); }
+  } };
+  let entries = await reader.getReviewEntries();
+  assert.equal(entries[0].date, '2026-10-28'); assert.equal(entries[0].filledCount, 2); assert.equal(entries[0].attachmentCount, 1);
+  reviewText = '# 市场观察\n编辑后的正文'; entries = await reader.getReviewEntries();
+  assert.match(entries[0].text, /编辑后的正文/); assert.equal(entries[0].filledCount, 1); assert.equal(cachedReads, 2);
+  console.log('PASS: dashboard cached reads retain date parsing, sections, attachments and edited content');
   console.log('PASS: review parsing, filters, market cutoff, legacy notes, attachments, AI text analysis and annual calendar');
 }
 main().catch(error => { console.error(error); process.exitCode = 1; });

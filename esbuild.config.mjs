@@ -8,7 +8,9 @@ const context = await esbuild.context({
   format: "cjs",
   target: "es2022",
   logLevel: "info",
-  sourcemap: "inline",
+  sourcemap: watch ? "inline" : false,
+  minifySyntax: !watch,
+  minifyWhitespace: !watch,
   outfile: "main.js"
 });
 

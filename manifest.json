@@ -1,7 +1,7 @@
 {
   "id": "tradenote",
   "name": "TradeNote",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "minAppVersion": "1.7.2",
   "description": "本地优先的 Markdown 交易复盘、日历与可选 AI 日报周报分析.",
   "author": "北漠海",

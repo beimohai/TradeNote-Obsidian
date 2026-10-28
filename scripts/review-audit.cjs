@@ -4,6 +4,7 @@ const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const versions = JSON.parse(fs.readFileSync('versions.json', 'utf8'));
 assert.match(manifest.description, /[.!?]$/, 'Manifest description must end with supported punctuation');
+assert.equal(manifest.isDesktopOnly, false, 'TradeNote core remains compatible with mobile');
 assert.equal(pkg.version, manifest.version);
 assert.match(manifest.version, /^(0|[1-9][0-9]*)[.](0|[1-9][0-9]*)[.](0|[1-9][0-9]*)$/);
 assert.equal('pnpm' in pkg, false, 'Keep pnpm configuration in pnpm-workspace.yaml');

@@ -22,7 +22,17 @@
 
 ## 快速入门
 
-### 从 GitHub 下载并安装
+### 从 Obsidian 插件市场安装（推荐）
+
+1. 打开 Obsidian 的“设置 → 第三方插件”，如有需要，先关闭受限模式；
+2. 点击“浏览”，搜索 **TradeNote**；
+3. 打开插件详情，点击“安装”，安装后启用 **TradeNote**；
+4. 点击左侧功能区的复盘图标，或在命令面板运行“打开复盘仪表盘”。
+
+也可以打开 [TradeNote 插件市场页面](https://obsidian.md/plugins?id=tradenote)，跳转到 Obsidian 安装。
+后续可在“设置 → 第三方插件”中检查更新，无需手动下载文件。
+
+### 从 GitHub 手动安装（备用）
 
 需要 Obsidian 1.7.2 或更高版本；在 1.13 及以上版本中，插件设置支持全局设置搜索。
 
@@ -33,7 +43,7 @@
 
 手动更新时只替换这三个文件，不要删除原来的 `data.json`，否则会丢失插件设置。
 
-插件尚未上架 Obsidian 插件市场，目前请使用上述方式安装。
+推荐优先使用插件市场安装和更新；上述手动方式适用于离线安装或需要指定版本的情况。
 
 ### 开始复盘
 
@@ -52,9 +62,12 @@ pnpm check
 pnpm lint
 pnpm test
 pnpm build
+pnpm package
 ```
 
-构建后，项目根目录会生成 `main.js`，与 `manifest.json`、`styles.css` 一起放入插件目录即可。开发时可运行 `pnpm dev` 监听源码并重新构建。
+构建后，项目根目录会生成 `main.js`；`pnpm package` 会将三个安装文件输出到 `dist/tradenote/`，不打包设置、笔记或附件。生产构建不含源码映射并压缩语法与空白，开发时可运行 `pnpm dev` 保留源码映射并监听源码。
+
+历史检索和仪表盘刷新复用 Obsidian 的笔记读取缓存，编辑后的内容仍由 Obsidian 更新。延迟加载的标签页会在刷新前正确加载；切换 AI 地址或密钥后，需要重新获取对应服务的模型列表。
 
 ## 功能概览
 
@@ -175,12 +188,18 @@ TradeNote is a local-first trading journal for [Obsidian](https://obsidian.md/).
 
 Requires Obsidian 1.7.2 or later. Settings are searchable on Obsidian 1.13 and later.
 
-1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/beimohai/TradeNote-Obsidian/releases/latest).
-2. Create `.obsidian/plugins/tradenote/` inside your vault and place the three files in that folder.
-3. Restart Obsidian and enable **TradeNote** under **Settings → Community plugins**.
+1. In Obsidian, open **Settings → Community plugins** and turn off Restricted mode if needed.
+2. Select **Browse**, search for **TradeNote**, and open its listing.
+3. Select **Install**, then enable **TradeNote**.
 4. Open the review dashboard from the ribbon or command palette and select a trading day to start writing.
 
-When updating manually, replace only those three files and keep your existing `data.json`.
+You can also open the [TradeNote community plugin page](https://obsidian.md/plugins?id=tradenote). Future updates are available from **Settings → Community plugins**.
+
+For an offline or version-specific installation, download `main.js`, `manifest.json`, and `styles.css` from a [GitHub release](https://github.com/beimohai/TradeNote-Obsidian/releases), place them in `.obsidian/plugins/tradenote/`, restart Obsidian, and enable the plugin. If your vault uses a custom configuration folder, use that folder in place of `.obsidian`.
+
+When updating manually, replace only those three files and keep your existing `data.json`. Production builds omit source maps and compact syntax and whitespace. Run `pnpm package` to collect the three distributable files in `dist/tradenote/`.
+
+The dashboard uses Obsidian’s note-read cache and loads deferred tabs before refreshing. Model lists are invalidated when the API endpoint or key changes, so a previous provider’s list cannot be selected accidentally.
 
 ### Privacy and network access
 
@@ -190,7 +209,7 @@ Annual calendar updates contact the Shanghai Stock Exchange. If you choose AI an
 
 ### Development
 
-Use Node.js 22.13 or later and pnpm 11.25.0. Run `pnpm install --frozen-lockfile`, followed by `pnpm release:files` to check types, lint, run tests, and build. Release tags use the exact numeric version in `manifest.json`, for example `0.1.3`, without a `v` prefix.
+Use Node.js 22.13 or later and pnpm 11.25.0. Run `pnpm install --frozen-lockfile`, followed by `pnpm release:files` to check types, lint, run tests, and build. Release tags use the exact numeric version in `manifest.json`, for example `0.1.4`, without a `v` prefix.
 
 ### Support and license
 

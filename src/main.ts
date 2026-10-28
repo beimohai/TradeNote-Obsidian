@@ -88,6 +88,7 @@ interface ReviewSettingDefinition {
 
 class StockReviewSettingTab extends PluginSettingTab {
   private availableModels: string[] = [];
+  private modelSource = "";
   constructor(app: App, private readonly plugin: StockReviewPlugin) { super(app, plugin); }
 
   getSettingDefinitions(): ReviewSettingDefinition[] {
@@ -137,16 +138,21 @@ class StockReviewSettingTab extends PluginSettingTab {
   }
 
   private renderModelSetting(setting: Setting): void {
-    if (this.availableModels.length) setting.addDropdown(dropdown => dropdown.addOptions(Object.fromEntries(this.availableModels.map(model => [model, model]))).setValue(this.availableModels.includes(this.plugin.settings.aiModel) ? this.plugin.settings.aiModel : this.availableModels[0]).onChange(async value => { this.plugin.settings.aiModel = value; await this.plugin.saveSettings(); }));
-    else setting.addText(text => text.setPlaceholder("模型名称").setValue(this.plugin.settings.aiModel).onChange(async value => { this.plugin.settings.aiModel = value.trim(); await this.plugin.saveSettings(); }));
+    const source = (): string => JSON.stringify([this.plugin.settings.aiBaseUrl, this.plugin.settings.aiApiKey]);
+    if (source() !== this.modelSource) this.availableModels = [];
+    setting.addText(text => text.setPlaceholder("模型名称").setValue(this.plugin.settings.aiModel).onChange(async value => { this.plugin.settings.aiModel = value.trim(); await this.plugin.saveSettings(); }));
+    if (this.availableModels.length) setting.addDropdown(dropdown => dropdown.addOptions({ "": "选择模型", ...Object.fromEntries(this.availableModels.map(model => [model, model])) }).setValue(this.availableModels.includes(this.plugin.settings.aiModel) ? this.plugin.settings.aiModel : "").onChange(async value => { if (!value) return; if (source() !== this.modelSource) { new Notice("地址或 Key 已变化，请重新获取模型列表"); return; } this.plugin.settings.aiModel = value; await this.plugin.saveSettings(); this.refreshSettings(); }));
     setting.addButton(button => button.setButtonText("获取模型列表").onClick(async () => {
+      button.setDisabled(true); const snapshot = source();
       try {
-        this.availableModels = await this.plugin.listAiModels();
+        const models = await this.plugin.listAiModels();
+        if (source() !== snapshot) throw new Error("地址或 Key 已变化，请重新获取");
+        this.availableModels = models; this.modelSource = snapshot;
         if (!this.availableModels.length) throw new Error("接口未返回模型");
-        if (this.plugin.settings.aiModel && !this.availableModels.includes(this.plugin.settings.aiModel)) this.availableModels.unshift(this.plugin.settings.aiModel);
         this.refreshSettings();
         new Notice(`已读取 ${this.availableModels.length} 个模型`);
       } catch (error) { new Notice(`获取模型失败：${error instanceof Error ? error.message : String(error)}`); }
+      finally { button.setDisabled(false); }
     })).addButton(button => button.setButtonText("测试 AI").onClick(async () => {
       try { await this.plugin.testAi(); new Notice("AI 连接正常"); }
       catch (error) { new Notice(`AI 测试失败：${error instanceof Error ? error.message : String(error)}`); }
@@ -534,7 +540,7 @@ export default class StockReviewPlugin extends Plugin {
     }));
   }
   onunload(): void { this.calendarCheckStopped = true; window.clearTimeout(this.refreshTimer); }
-  async openDashboard(): Promise<void> { const existing = this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)[0]; if (existing) { await (existing.view as StockReviewDashboardView).refresh(); await this.app.workspace.revealLeaf(existing); return; } const leaf = this.app.workspace.getLeaf("tab"); await leaf.setViewState({ type: DASHBOARD_VIEW_TYPE, active: true }); await this.app.workspace.revealLeaf(leaf); }
+  async openDashboard(): Promise<void> { const existing = this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)[0]; if (existing) { await existing.loadIfDeferred(); if (existing.view instanceof StockReviewDashboardView) await existing.view.refresh(); await this.app.workspace.revealLeaf(existing); return; } const leaf = this.app.workspace.getLeaf("tab"); await leaf.setViewState({ type: DASHBOARD_VIEW_TYPE, active: true }); await this.app.workspace.revealLeaf(leaf); }
   async testAi(): Promise<void> { const { aiBaseUrl, aiApiKey, aiModel } = this.settings; if (!aiBaseUrl || !aiApiKey || !aiModel) throw new Error("请先填写 API 地址、Key 和模型"); const response = await requestUrl({ url: aiBaseUrl, method: "POST", headers: { Authorization: `Bearer ${aiApiKey}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: aiModel, messages: [{ role: "user", content: "Reply OK" }], max_tokens: 4 }), throw: true }); const payload = response.json as { choices?: Array<{ message?: { content?: string } }> }; if (!payload?.choices?.[0]?.message?.content?.trim()) throw new Error("AI 未返回有效消息"); }
   async listAiModels(): Promise<string[]> { const { aiBaseUrl, aiApiKey } = this.settings; if (!aiBaseUrl || !aiApiKey) throw new Error("请先填写 API 地址和 Key"); const url = new URL(aiBaseUrl); url.pathname = url.pathname.replace(/\/chat\/completions\/?$/, "/models"); const response = await requestUrl({ url: url.toString(), method: "GET", headers: { Authorization: `Bearer ${aiApiKey}` }, throw: true }); const payload = response.json as { data?: Array<{ id?: string }> }; return [...new Set((payload.data ?? []).map((item) => item.id?.trim()).filter((id): id is string => Boolean(id)))].sort(); }
   async checkAnnualCalendar(now = new Date()): Promise<void> {
@@ -616,7 +622,7 @@ export default class StockReviewPlugin extends Plugin {
     const name = `${period === "daily" ? "日报" : "周报"}-${range.start}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.md`;
     return this.app.vault.create(joinPath(folder, name), text);
   }
-  async refreshDashboards(): Promise<void> { for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) await (leaf.view as StockReviewDashboardView).refresh(); }
+  async refreshDashboards(): Promise<void> { for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) { await leaf.loadIfDeferred(); if (leaf.view instanceof StockReviewDashboardView) await leaf.view.refresh(); } }
   dailyFolderPath(): string { return joinPath(this.settings.rootFolder, this.settings.dailyFolder); }
   isTradingDay(date: string): boolean { return isChinaTradingDay(date); }
   reviewDateFor(date: string): string { return reviewDateFor(date); }
@@ -701,7 +707,7 @@ export default class StockReviewPlugin extends Plugin {
       attachmentCounts.set(date, (attachmentCounts.get(date) ?? 0) + 1);
     }
     return (await Promise.all(files.map(async (file) => {
-      const text = await this.app.vault.read(file);
+      const text = await this.app.vault.cachedRead(file);
       const sections = Object.fromEntries(SECTIONS.map((title) => [title, sectionText(text, title)])) as Record<Section, string>;
       const date = reviewDateFromBasename(file.basename);
       return { file, date, text, sections, filledCount: SECTIONS.filter((title) => sections[title].length > 0).length, attachmentCount: attachmentCounts.get(date) ?? 0 };
